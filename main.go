@@ -1,9 +1,11 @@
 package main
 
+import "time"
+
 func main() {
 	rewards := make(chan poolRewards)
-	chain := &blockchain{} // Probably going to be moved to pools.go
-	go poolController(1000, chain, rewards)
+
+	go poolController(rewards)
 
 	// main loop
 	for {
@@ -14,6 +16,7 @@ func main() {
 	}
 	saveTofile()
 
+	time.Sleep(120 * time.Second)
 }
 
 func printData() {
