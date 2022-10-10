@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
 	"time"
 )
@@ -10,8 +11,17 @@ type poolRewards struct {
 	rewards     []*dataUnit
 }
 
+type system struct {
+	bc *blockchain
+}
+
+func newSystem() *system {
+	return &system{}
+}
+
 func poolController(com chan poolRewards) {
-	chain := newBlockChain()
+	system := newSystem()
+	system.bc = newBlockChain()
 
 	selfBlockChan := make(chan *block)
 	honestBlockChan := make(chan *block)
@@ -19,92 +29,135 @@ func poolController(com chan poolRewards) {
 	// "network" of a new block being published.
 	netCom := make(chan int, 100)
 
-	go selfishPool(45, selfBlockChan, netCom)
-	go honestPool(55, honestBlockChan, netCom)
+	go system.selfishPool(45, selfBlockChan, netCom)
+	go system.honestPool(55, honestBlockChan, netCom)
 
+	// Network power of the selfish pool
+	//gamma := 0.5
 	// main loop
 	for {
 		select {
 		case b := <-selfBlockChan:
-			chain.addNewBlock(b)
+			system.addBlock(b, true)
 			// netCom <- 1
+			fmt.Println("___________________________")
+			fmt.Println(system.bc.String())
 		case b := <-honestBlockChan:
-			chain.addNewBlock(b)
-			println("\tHonest: created new block")
+			system.addBlock(b, false)
+			fmt.Println("Honest: created new block")
 			netCom <- 1
+			fmt.Println("___________________________")
+			fmt.Println(system.bc.String())
 		default:
 			time.Sleep(50 * time.Millisecond)
 		}
-
 	}
 }
 
 // TODO: Add a 'local' version of the blockchain.
 // May be better, maybe not. Would be closer to reality.
-func selfishPool(power int, blockCom chan *block, netCom chan int) {
-	privChain := make([]*block, 0)
-	pubchain := 0
+func (s *system) selfishPool(power int, blockCom chan *block, netCom chan int) {
+	var privChain []*block
 	for {
-		// do work
+		// The selfish pool mines a new block
 		time.Sleep(1 * time.Second)
-		if rand.Intn(16) == 15 {
+		randroll := rand.Intn(100)
+		if power >= randroll {
 			// We succeded, new block
-			nb := selfishMiner(power)
+			nb := s.createBlock(power, true)
+			// If we already have a private chain -> Parent and depth follow private chain instead of public blockchain
+			if len(privChain) > 0 {
+				nb.parent = privChain[len(privChain)-1]
+				nb.parentHash = privChain[len(privChain)-1].hash
+				nb.depth = privChain[len(privChain)-1].depth + 1
+			}
 			privChain = append(privChain, nb)
-			println("Selfish: new secret block added")
-		}
-
-		if len(netCom) == 1 && len(privChain) > 0 {
-			// they have released a block, time to reveal our own
-			blockCom <- privChain[0]
-			println("Selfish: Published secret block")
-			privChain = privChain[1:] // removes the first element.
-			<-netCom
-			continue
-		} else if len(netCom) == 0 {
-			continue
-		} else { // there is more than one block added since last check.
-			for _ = range netCom {
-				pubchain += 1
+			fmt.Println("Selfish: new secret block added")
+			// When we are ahead by one and our private chain has 2 blocks -> Limited advantage
+			if len(privChain) == 2 && privChain[len(privChain)-1].depth-1 == s.bc.CurrentBlock().depth {
+				fmt.Println("Selfish: Ahead by 1 -> Full release ")
+				for _, block := range privChain {
+					blockCom <- block
+				}
+				privChain = []*block{}
 			}
 		}
-		if pubchain == len(privChain)-1 {
-			// they have caught up, release all if any private held blocks
-			for _, b := range privChain {
-				blockCom <- b
-			}
-			pubchain = 0
-			privChain = make([]*block, 0)
-			println("Selfish: full release")
-		} else if pubchain >= len(privChain)-1 {
-			// they have passed or have more blocks, join the publick chain
-			pubchain = 0
-			privChain = make([]*block, 0)
-			println("Selfish: abandon")
-		} else if pubchain <= len(privChain)-2 {
-			// they are close but not fully caught up.
-			// Need to release blocks.
-			// TODO: this is not technically part of the algo in paper, probably not needed.
-			println("Selfish: TODO")
-			continue
-		}
+		// Some honest miners has mined a block and we have private blocks
+		if len(netCom) > 0 && len(privChain) > 0 {
+			// 1. The miner references all (unreferenced) uncle blocks based on its public branches
 
+			// Honest pool is ahead of us. Scrap private chain and mine on new block.
+			if privChain[len(privChain)-1].depth < s.bc.CurrentBlock().depth {
+				privChain = []*block{}
+				fmt.Println("Selfish: abandon")
+				// If we are tied with honest pool. Release the last block in the private branch and scrap.
+			} else if privChain[len(privChain)-1].depth == s.bc.CurrentBlock().depth {
+				blockCom <- privChain[len(privChain)-1]
+				privChain = []*block{}
+				fmt.Println("Selfish: Tied release")
+				// If we are ahead by one. Publish private branch.
+			} else if privChain[len(privChain)-1].depth == s.bc.CurrentBlock().depth+1 {
+				for _, block := range privChain {
+					blockCom <- block
+				}
+				privChain = []*block{}
+				fmt.Println("Selfish: full release")
+				// If we are ahead by more than 2. Release block until we reach public chain
+			} else if privChain[len(privChain)-1].depth >= s.bc.CurrentBlock().depth+2 {
+				toRelease := privChain[len(privChain)-1].depth - (s.bc.CurrentBlock().depth + 2)
+				for _, block := range privChain[:toRelease] {
+					blockCom <- block
+				}
+				privChain = privChain[toRelease:]
+				fmt.Println("Selfish: Ahead by 2 or more")
+			}
+		}
 	}
 }
-func selfishMiner(power int) *block {
+
+func (s *system) createBlock(power int, selfish bool) *block {
 	// Creates a dataunit of expected value.
 	// actual final values gets calculated from the final blockchain.
+	var dat dataUnit
+	if selfish {
+		dat = dataUnit{selfish: true}
+	} else {
+		dat = dataUnit{selfish: false}
+	}
 	newBlock := block{
-		dat: dataUnit{selfish: true},
+		hash:       []byte(randomString(10)),
+		dat:        dat,
+		parentHash: s.bc.CurrentBlock().hash,
+		depth:      s.bc.CurrentBlock().depth + 1,
 	}
 	return &newBlock
 }
 
-func honestPool(power int, blockCom chan *block, netCom chan int) {
+func (s *system) addBlock(block *block, selfish bool) {
+	gamma := 50
+	// If two blocks are on the same depth -> Fork
+	if s.bc.CurrentBlock().depth == block.depth {
+		randroll := rand.Intn(100)
+		// If selfish pool reaches most nodes because of network power
+		if randroll >= gamma {
+			if selfish == true {
+				s.bc.chain = s.bc.chain[:len(s.bc.chain)-1]
+				s.bc.addNewBlock(block)
+				return
+			} else {
+				return
+			}
+		}
+	}
+	s.bc.addNewBlock(block)
+}
+
+func (s *system) honestPool(power int, blockCom chan *block, netCom chan int) {
 	// missedBlocks := 0
 	for {
 		time.Sleep(1 * time.Second)
-		if rand.Intn(16) != 15 {
+		if power >= rand.Intn(100) {
+			blockCom <- s.createBlock(power, false)
 			continue
 		}
 
@@ -122,18 +175,8 @@ func honestPool(power int, blockCom chan *block, netCom chan int) {
 		// 	continue
 		// }
 		// We have a new blokc, publish.
-		blockCom <- honsetMiner()
+
 	}
-}
-func honsetMiner() *block {
-	// Creates a dataunit of expected value.
-	// actual final values gets calculated from the final blockchain.
-	// Dataunit is probably going to be set by poolController.
-	// TODO: datunit.
-	newBlock := block{
-		dat: dataUnit{selfish: false},
-	}
-	return &newBlock
 }
 
 // For early early tests we just run a 1/15 chance
@@ -142,4 +185,14 @@ func honsetMiner() *block {
 // TODO: Fully create it later.
 func doWork() bool {
 	return rand.Intn(16) == 15
+}
+
+func randomString(length int) string {
+	b := make([]byte, length)
+	var seededRand = rand.New(rand.NewSource(time.Now().UnixNano()))
+	charSet := "aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZ"
+	for i := range b {
+		b[i] = charSet[seededRand.Intn(len(charSet)-1)]
+	}
+	return string(b)
 }

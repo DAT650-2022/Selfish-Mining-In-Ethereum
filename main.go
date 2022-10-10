@@ -1,6 +1,8 @@
 package main
 
-import "time"
+import (
+	"time"
+)
 
 func main() {
 	rewards := make(chan poolRewards)

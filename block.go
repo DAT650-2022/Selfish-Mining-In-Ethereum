@@ -1,12 +1,13 @@
 package main
 
 type block struct {
-	hash          []byte
-	prevBlock     *block
-	prevBlockHash []byte
-	uncleBlocks   []*block
-	difficulty    int
-	dat           dataUnit
+	hash        []byte
+	parent      *block
+	parentHash  []byte
+	uncleBlocks []*block
+	difficulty  int
+	dat         dataUnit
+	depth       int
 }
 
 // TODO: maybe move selfish bool to block?
@@ -21,11 +22,12 @@ type dataUnit struct {
 
 func newGenesisBlock() *block {
 	return &block{
-		hash:          []byte("Darwin"),
-		prevBlock:     nil,
-		prevBlockHash: nil,
-		uncleBlocks:   nil,
-		difficulty:    0,
-		dat:           dataUnit{rewardTot: 0},
+		hash:        []byte("Darwin"),
+		parent:      nil,
+		parentHash:  nil,
+		uncleBlocks: nil,
+		difficulty:  0,
+		dat:         dataUnit{rewardTot: 0},
+		depth:       0,
 	}
 }
