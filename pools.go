@@ -101,7 +101,7 @@ func (s *system) selfishPool(power int, blockCom chan *block, netCom chan int) {
 					blockCom <- block
 				}
 				privChain = []*block{}
-				fmt.Println("Selfish: full release")
+				fmt.Println("Full release")
 				// If we are ahead by more than 2. Release block until we reach public chain
 			} else if privChain[len(privChain)-1].depth >= s.bc.CurrentBlock().depth+2 {
 				toRelease := privChain[len(privChain)-1].depth - (s.bc.CurrentBlock().depth + 2)
@@ -111,6 +111,7 @@ func (s *system) selfishPool(power int, blockCom chan *block, netCom chan int) {
 				privChain = privChain[toRelease:]
 				fmt.Println("Selfish: Ahead by 2 or more")
 			}
+			<-netCom
 		}
 	}
 }
