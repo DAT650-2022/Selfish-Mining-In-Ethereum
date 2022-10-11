@@ -7,7 +7,7 @@ import (
 
 type blockchain struct {
 	chain  []*block
-	uncles map[string]*block
+	uncles map[int]*block
 }
 
 // Helpfull when in knowing if a block is dated.
@@ -31,7 +31,7 @@ func (bc *blockchain) CurrentBlock() *block {
 func newBlockChain() *blockchain {
 	return &blockchain{
 		chain:  []*block{newGenesisBlock()},
-		uncles: make(map[string]*block, 0),
+		uncles: make(map[int]*block, 0),
 	}
 }
 

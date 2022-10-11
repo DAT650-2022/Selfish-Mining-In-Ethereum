@@ -47,7 +47,7 @@ func (b *block) calckRewards() {
 		}
 	}
 	b.dat.rewardNephew = nephRew
-
+	b.calcTotal()
 }
 
 func (b *block) updateUncle(reward float64) {
@@ -60,5 +60,5 @@ func (b *block) calcTotal() {
 }
 
 func (b *block) String() string {
-	return fmt.Sprintf("Hash:\t%s \nReward:\t%f", string(b.hash), b.dat.rewardTot)
+	return fmt.Sprintf("Hash:\t%s \nPHash:\t%s \nDepth:\t%d \nReward:\t%f \nSelfish:\t%t", string(b.hash), string(b.parentHash), b.depth, b.dat.rewardTot, b.dat.selfish)
 }

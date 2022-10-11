@@ -23,6 +23,11 @@ func main() {
 
 func printData() {
 	// print some data to consoel.
+	// for _, b := range sys.bc.chain {
+	// 	println("==========")
+	// 	print(b)
+	// 	println("==========")
+	// }
 }
 
 func saveTofile() {
