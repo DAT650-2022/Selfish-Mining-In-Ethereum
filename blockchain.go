@@ -15,6 +15,12 @@ func (bc *blockchain) round() int {
 	return len(bc.chain)
 }
 func (bc *blockchain) addNewBlock(b *block) {
+	// Calculate uncles rewards if there exits any
+	for _, u := range b.uncleBlocks {
+		// TODO: correct
+		depth := float64(b.depth - u.depth)
+		u.updateUncle(depth / 8.0)
+	}
 	bc.chain = append(bc.chain, b)
 }
 
