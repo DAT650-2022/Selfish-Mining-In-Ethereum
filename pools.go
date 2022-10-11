@@ -27,10 +27,11 @@ func poolController(com chan poolRewards) {
 	honestBlockChan := make(chan *block)
 	// Used to simulate network to be able to inform
 	// "network" of a new block being published.
-	netCom := make(chan int, 100)
+	selfishnetCom := make(chan int, 100)
+	honestnetCom := make(chan int, 100)
 
-	go system.selfishPool(45, selfBlockChan, netCom)
-	go system.honestPool(55, honestBlockChan, netCom)
+	go system.honestPool(55, honestBlockChan, honestnetCom)
+	go system.selfishPool(45, selfBlockChan, selfishnetCom)
 
 	// Network power of the selfish pool
 	//gamma := 0.5
@@ -39,13 +40,12 @@ func poolController(com chan poolRewards) {
 		select {
 		case b := <-selfBlockChan:
 			system.addBlock(b, true)
-			// netCom <- 1
+			honestnetCom <- len(system.bc.chain)
 			fmt.Println("___________________________")
 			fmt.Println(system.bc.String())
 		case b := <-honestBlockChan:
 			system.addBlock(b, false)
-			fmt.Println("Honest: created new block")
-			netCom <- 1
+			selfishnetCom <- len(system.bc.chain)
 			fmt.Println("___________________________")
 			fmt.Println(system.bc.String())
 		default:
@@ -161,21 +161,6 @@ func (s *system) honestPool(power int, blockCom chan *block, netCom chan int) {
 			blockCom <- s.createBlock(power, false)
 			continue
 		}
-
-		// We have mined a block, time to publish
-		// check if our block is relevant.
-		// if len(netCom) <= 1 {
-		// 	// Our block no good
-		// 	// might be a uncle block
-		// 	// TODO: still send our block to blockcom
-		// 	// the poolcontroller should handle rest?
-		// 	// for now empty queue and just continue
-		// 	for _ = range netCom {
-		// 		missedBlocks += 1
-		// 	}
-		// 	continue
-		// }
-		// We have a new blokc, publish.
 
 	}
 }
