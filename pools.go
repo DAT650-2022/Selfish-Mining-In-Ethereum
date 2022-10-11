@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"math/rand"
 	"time"
@@ -40,8 +41,8 @@ func poolController(com chan poolRewards) {
 	selfishnetCom := make(chan int, 100)
 	honestnetCom := make(chan int, 100)
 
-	go honestPool(50, honestBlockChan, honestnetCom)
-	go selfishPool(50, selfBlockChan, selfishnetCom)
+	go honestPool(55, honestBlockChan, honestnetCom)
+	go selfishPool(45, selfBlockChan, selfishnetCom)
 
 	// Network power of the selfish pool
 	for {
@@ -69,7 +70,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 	potUncles := []int{} // indexes of potiential uncle blocks from publick chain.
 	for {
 		// The selfish pool mines a new block
-		time.Sleep(1 * time.Second)
+		time.Sleep(200 * time.Millisecond)
 
 		randroll := rand.Intn(100)
 		if power >= randroll {
@@ -83,13 +84,14 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 
 			}
 			// Check if we have any potentiall uncleblocks
-			if len(potUncles) > 0 {
+			if len(sys.bc.uncles) > 0 {
 				uncs := findUncles(&potUncles, nb.depth)
 				// uncs is list of index(in chain) to valid uncles
 				// returns max 2
 				if len(uncs) > 0 {
-					for u := range uncs {
+					for _, u := range uncs {
 						nb.uncleBlocks = append(nb.uncleBlocks, sys.bc.chain[u])
+
 					}
 				}
 			}
@@ -160,17 +162,21 @@ func createBlock(power int, selfish bool) *block {
 	// Creates a dataunit of expected value.
 	// actual final values gets calculated from the final blockchain.
 	var dat dataUnit
+	depth := sys.bc.CurrentBlock().depth + 1
 	if selfish {
 		dat = dataUnit{selfish: true}
 	} else {
 		dat = dataUnit{selfish: false}
+		if sys.fork && !sys.forkSelfish {
+			depth = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1].depth + 1
+		}
 	}
 	newBlock := block{
 		hash:       []byte(randomString(10)),
 		parent:     sys.bc.CurrentBlock(),
 		dat:        dat,
 		parentHash: sys.bc.CurrentBlock().hash,
-		depth:      sys.bc.CurrentBlock().depth + 1,
+		depth:      depth,
 	}
 	return &newBlock
 }
@@ -188,6 +194,22 @@ func (s *system) addBlock(b *block, selfish bool) {
 		} else if b.depth < s.bc.CurrentBlock().depth {
 			// find parent
 			println("SOmethgin wong")
+			k := b
+			i := 0
+			for {
+				if bytes.Equal(k.parentHash, sys.bc.chain[k.parent.depth].hash) { // Parent is in main chain
+					if _, ok := sys.bc.uncles[k.depth]; !ok {
+						sys.bc.uncles[k.depth] = k
+						break
+					}
+				}
+				k = k.parent
+				i++
+				if i == 3 {
+					break
+				}
+			}
+			return
 		}
 
 		s.bc.addNewBlock(b)
@@ -263,7 +285,7 @@ func (s *system) addBlock(b *block, selfish bool) {
 func honestPool(power int, blockCom chan *block, netCom chan int) {
 	// missedBlocks := 0
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(200 * time.Millisecond)
 		if power >= rand.Intn(100) {
 			nb := createBlock(power, false)
 			nb.calckRewards()
