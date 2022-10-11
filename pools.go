@@ -30,8 +30,8 @@ func poolController(com chan poolRewards) {
 	selfishnetCom := make(chan int, 100)
 	honestnetCom := make(chan int, 100)
 
-	go system.honestPool(55, honestBlockChan, honestnetCom)
-	go system.selfishPool(45, selfBlockChan, selfishnetCom)
+	go honestPool(55, honestBlockChan, honestnetCom)
+	go selfishPool(45, selfBlockChan, selfishnetCom)
 
 	// Network power of the selfish pool
 	//gamma := 0.5
@@ -56,7 +56,7 @@ func poolController(com chan poolRewards) {
 
 // TODO: Add a 'local' version of the blockchain.
 // May be better, maybe not. Would be closer to reality.
-func (s *system) selfishPool(power int, blockCom chan *block, netCom chan int) {
+func selfishPool(power int, blockCom chan *block, netCom chan int) {
 	var privChain []*block
 	for {
 		// The selfish pool mines a new block
@@ -116,7 +116,7 @@ func (s *system) selfishPool(power int, blockCom chan *block, netCom chan int) {
 	}
 }
 
-func (s *system) createBlock(power int, selfish bool) *block {
+func createBlock(power int, selfish bool) *block {
 	// Creates a dataunit of expected value.
 	// actual final values gets calculated from the final blockchain.
 	var dat dataUnit
@@ -153,12 +153,12 @@ func (s *system) addBlock(block *block, selfish bool) {
 	s.bc.addNewBlock(block)
 }
 
-func (s *system) honestPool(power int, blockCom chan *block, netCom chan int) {
+func honestPool(power int, blockCom chan *block, netCom chan int) {
 	// missedBlocks := 0
 	for {
 		time.Sleep(1 * time.Second)
 		if power >= rand.Intn(100) {
-			blockCom <- s.createBlock(power, false)
+			blockCom <- createBlock(power, false)
 			continue
 		}
 
