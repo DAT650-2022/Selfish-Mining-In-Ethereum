@@ -44,8 +44,6 @@ func poolController(com chan poolRewards) {
 	go selfishPool(50, selfBlockChan, selfishnetCom)
 
 	// Network power of the selfish pool
-	//gamma := 0.5
-	// main loop
 	for {
 		select {
 		case b := <-selfBlockChan:
