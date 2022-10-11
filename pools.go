@@ -97,7 +97,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 		}
 
 		// Some honest miners has mined a block and we have private blocks
-		if len(privChain) > 0 && sys.bc.CurrentBlock().depth >= privChain[0].depth-1 {
+		if len(privChain) > 0 && sys.bc.CurrentBlock().depth >= privChain[0].depth {
 			// 1. The miner references all (unreferenced) uncle blocks based on its public branches
 
 			// Honest pool is ahead of us. Scrap private chain and mine on new block.

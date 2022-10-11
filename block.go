@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type block struct {
 	hash        []byte
 	parent      *block
@@ -55,4 +57,8 @@ func (b *block) updateUncle(reward float64) {
 
 func (b *block) calcTotal() {
 	b.dat.rewardTot = float64(b.dat.rewardMined) + b.dat.rewardNephew + b.dat.rewardUncle
+}
+
+func (b *block) String() string {
+	return fmt.Sprintf("Hash:\t%s \nReward:\t%f", string(b.hash), b.dat.rewardTot)
 }
