@@ -44,14 +44,14 @@ func poolController(com chan poolRewards) {
 		select {
 		case b := <-selfBlockChan:
 			sys.addBlock(b, true)
-			honestnetCom <- len(sys.bc.chain)
+			honestnetCom <- len(sys.bc.chain) - 1
 			selfishBlocks += 1
 			//fmt.Println("___________________________")
 			//fmt.Println(sys.bc.String())
 			println("Selfish published")
 		case b := <-honestBlockChan:
 			sys.addBlock(b, false)
-			selfishnetCom <- len(sys.bc.chain)
+			selfishnetCom <- len(sys.bc.chain) - 1
 			honestBlocks += 1
 			//fmt.Println("___________________________")
 			//fmt.Println(sys.bc.String())
@@ -94,30 +94,11 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 			nb.calckRewards()
 			privChain = append(privChain, nb)
 			fmt.Println("Selfish: new secret block added")
-
-			// When we are ahead by one and our private chain has 2 blocks -> Limited advantage
-			// TODO: is this not checked later=?
-			// if len(privChain) == 2 && privChain[len(privChain)-1].depth-1 == sys.bc.CurrentBlock().depth {
-			// 	fmt.Println("Selfish: Ahead by 1 -> Full release ")
-			// 	for _, block := range privChain {
-			// 		blockCom <- block
-			// 	}
-			// 	privChain = []*block{}
-			// }
 		}
 
 		// Some honest miners has mined a block and we have private blocks
-		if len(netCom) > 0 && len(privChain) > 0 {
+		if len(privChain) > 0 && sys.bc.CurrentBlock().depth >= privChain[0].depth-1 {
 			// 1. The miner references all (unreferenced) uncle blocks based on its public branches
-
-			latest := -1
-			for i := 0; i < len(netCom); i++ {
-				latest = <-netCom
-				if latest != -1 {
-					potUncles = append(potUncles, latest)
-				}
-
-			}
 
 			// Honest pool is ahead of us. Scrap private chain and mine on new block.
 			if privChain[len(privChain)-1].depth < sys.bc.CurrentBlock().depth {
@@ -138,13 +119,13 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 				// If we are ahead by more than 2. Release block until we reach public chain
 			} else if privChain[len(privChain)-1].depth >= sys.bc.CurrentBlock().depth+2 {
 				//toRelease := privChain[len(privChain)-1].depth - (sys.bc.CurrentBlock().depth + 2)
-				// have to realease up to latest index from netcom +1
-				toRelease := sys.bc.CurrentBlock().depth - privChain[0].depth
-				for _, block := range privChain[:toRelease] {
-					blockCom <- block
+				toRelease := sys.bc.CurrentBlock().depth - privChain[0].depth + 1 // same depth = 0, release one?, one ahead = 1 relase 2?
+				for i := 0; i < toRelease; i++ {
+					blockCom <- privChain[i]
 				}
+
 				privChain = privChain[toRelease:]
-				fmt.Println("Selfish: Ahead by 2 or more")
+				//fmt.Println("Selfish: Ahead by 2 or more")
 			}
 
 		}
