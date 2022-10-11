@@ -5,7 +5,6 @@ type block struct {
 	parent      *block
 	parentHash  []byte
 	uncleBlocks []*block
-	difficulty  int
 	dat         dataUnit
 	depth       int
 }
@@ -26,7 +25,6 @@ func newGenesisBlock() *block {
 		parent:      nil,
 		parentHash:  nil,
 		uncleBlocks: nil,
-		difficulty:  0,
 		dat:         dataUnit{rewardTot: 0},
 		depth:       0,
 	}

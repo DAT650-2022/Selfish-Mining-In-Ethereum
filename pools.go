@@ -12,7 +12,8 @@ type poolRewards struct {
 }
 
 type system struct {
-	bc *blockchain
+	bc        *blockchain
+	privChain []*block
 }
 
 func newSystem() *system {
@@ -29,8 +30,8 @@ func poolController(com chan poolRewards) {
 	// "network" of a new block being published.
 	netCom := make(chan int, 100)
 
-	go system.selfishPool(45, selfBlockChan, netCom)
-	go system.honestPool(55, honestBlockChan, netCom)
+	go system.selfishPool(70, selfBlockChan, netCom)
+	go system.honestPool(30, honestBlockChan, netCom)
 
 	// Network power of the selfish pool
 	//gamma := 0.5
@@ -57,7 +58,7 @@ func poolController(com chan poolRewards) {
 // TODO: Add a 'local' version of the blockchain.
 // May be better, maybe not. Would be closer to reality.
 func (s *system) selfishPool(power int, blockCom chan *block, netCom chan int) {
-	var privChain []*block
+	s.privChain = []*block{}
 	for {
 		// The selfish pool mines a new block
 		time.Sleep(1 * time.Second)
@@ -66,50 +67,50 @@ func (s *system) selfishPool(power int, blockCom chan *block, netCom chan int) {
 			// We succeded, new block
 			nb := s.createBlock(power, true)
 			// If we already have a private chain -> Parent and depth follow private chain instead of public blockchain
-			if len(privChain) > 0 {
-				nb.parent = privChain[len(privChain)-1]
-				nb.parentHash = privChain[len(privChain)-1].hash
-				nb.depth = privChain[len(privChain)-1].depth + 1
+			if len(s.privChain) > 0 {
+				nb.parent = s.privChain[len(s.privChain)-1]
+				nb.parentHash = s.privChain[len(s.privChain)-1].hash
+				nb.depth = s.privChain[len(s.privChain)-1].depth + 1
 			}
-			privChain = append(privChain, nb)
+			s.privChain = append(s.privChain, nb)
 			fmt.Println("Selfish: new secret block added")
 			// When we are ahead by one and our private chain has 2 blocks -> Limited advantage
-			if len(privChain) == 2 && privChain[len(privChain)-1].depth-1 == s.bc.CurrentBlock().depth {
-				fmt.Println("Selfish: Ahead by 1 -> Full release ")
-				for _, block := range privChain {
+			if len(s.privChain) == 2 && s.privChain[len(s.privChain)-1].depth-1 == s.bc.CurrentBlock().depth {
+				fmt.Println("Selfish: Ahead by 1 -> Limited advantage release")
+				for _, block := range s.privChain {
 					blockCom <- block
 				}
-				privChain = []*block{}
+				s.privChain = []*block{}
 			}
 		}
 		// Some honest miners has mined a block and we have private blocks
-		if len(netCom) > 0 && len(privChain) > 0 {
+		if len(netCom) > 0 && len(s.privChain) > 0 {
 			// 1. The miner references all (unreferenced) uncle blocks based on its public branches
 
 			// Honest pool is ahead of us. Scrap private chain and mine on new block.
-			if privChain[len(privChain)-1].depth < s.bc.CurrentBlock().depth {
-				privChain = []*block{}
-				fmt.Println("Selfish: abandon")
+			if s.privChain[len(s.privChain)-1].depth < s.bc.CurrentBlock().depth {
+				s.privChain = []*block{}
+				fmt.Println("Selfish: Behind main chain -> Abandon")
 				// If we are tied with honest pool. Release the last block in the private branch and scrap.
-			} else if privChain[len(privChain)-1].depth == s.bc.CurrentBlock().depth {
-				blockCom <- privChain[len(privChain)-1]
-				privChain = []*block{}
-				fmt.Println("Selfish: Tied release")
+			} else if s.privChain[len(s.privChain)-1].depth == s.bc.CurrentBlock().depth {
+				blockCom <- s.privChain[len(s.privChain)-1]
+				s.privChain = []*block{}
+				fmt.Println("Selfish: Same depth as main chain -> Tied release")
 				// If we are ahead by one. Publish private branch.
-			} else if privChain[len(privChain)-1].depth == s.bc.CurrentBlock().depth+1 {
-				for _, block := range privChain {
+			} else if s.privChain[len(s.privChain)-1].depth == s.bc.CurrentBlock().depth+1 {
+				for _, block := range s.privChain {
 					blockCom <- block
 				}
-				privChain = []*block{}
-				fmt.Println("Full release")
+				s.privChain = []*block{}
+				fmt.Println("Selfish: Ahead by one -> Full release")
 				// If we are ahead by more than 2. Release block until we reach public chain
-			} else if privChain[len(privChain)-1].depth >= s.bc.CurrentBlock().depth+2 {
-				toRelease := privChain[len(privChain)-1].depth - (s.bc.CurrentBlock().depth + 2)
-				for _, block := range privChain[:toRelease] {
+			} else if s.privChain[len(s.privChain)-1].depth >= s.bc.CurrentBlock().depth+2 {
+				toRelease := s.bc.CurrentBlock().depth - s.privChain[0].depth
+				for _, block := range s.privChain[:toRelease] {
 					blockCom <- block
 				}
-				privChain = privChain[toRelease:]
-				fmt.Println("Selfish: Ahead by 2 or more")
+				s.privChain = s.privChain[toRelease:]
+				fmt.Println("Selfish: Ahead by 2 or more -> Catch up")
 			}
 			<-netCom
 		}
@@ -126,31 +127,41 @@ func (s *system) createBlock(power int, selfish bool) *block {
 		dat = dataUnit{selfish: false}
 	}
 	newBlock := block{
-		hash:       []byte(randomString(10)),
-		dat:        dat,
-		parentHash: s.bc.CurrentBlock().hash,
-		depth:      s.bc.CurrentBlock().depth + 1,
+		hash:        []byte(randomString(10)),
+		parent:      s.bc.CurrentBlock(),
+		parentHash:  s.bc.CurrentBlock().hash,
+		uncleBlocks: []*block{},
+		dat:         dat,
+		depth:       s.bc.CurrentBlock().depth + 1,
 	}
 	return &newBlock
 }
 
 func (s *system) addBlock(block *block, selfish bool) {
-	gamma := 50
-	// If two blocks are on the same depth -> Fork
-	if s.bc.CurrentBlock().depth == block.depth {
-		randroll := rand.Intn(100)
-		// If selfish pool reaches most nodes because of network power
-		if randroll >= gamma {
-			if selfish == true {
+	// If current selfish block is at same depth as public chain. Possible fork has occurred ->
+	// Check if selfish chain is longer than public chain. Adopt the longest chain. If not -> Roll based on network power
+	if selfish {
+		if block.depth <= s.bc.CurrentBlock().depth {
+			if len(s.privChain) >= (s.bc.CurrentBlock().depth - block.depth) {
 				s.bc.chain = s.bc.chain[:len(s.bc.chain)-1]
 				s.bc.addNewBlock(block)
-				return
+				fmt.Println(block)
 			} else {
-				return
+				gamma := 50
+				randroll := rand.Intn(100)
+				if randroll >= gamma {
+					s.bc.chain = s.bc.chain[:len(s.bc.chain)-1]
+					s.bc.addNewBlock(block)
+				}
 			}
+		} else {
+			s.bc.addNewBlock(block)
 		}
 	}
-	s.bc.addNewBlock(block)
+
+	if !selfish {
+		s.bc.addNewBlock(block)
+	}
 }
 
 func (s *system) honestPool(power int, blockCom chan *block, netCom chan int) {
