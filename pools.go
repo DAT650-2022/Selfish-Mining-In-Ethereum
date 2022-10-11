@@ -31,9 +31,6 @@ var privChain []*block
 func poolController(com chan poolRewards) {
 	sys.bc = newBlockChain()
 
-	selfishBlocks := 0
-	honestBlocks := 0
-
 	selfBlockChan := make(chan *block)
 	honestBlockChan := make(chan *block)
 	// Used to simulate network to be able to inform
@@ -48,17 +45,19 @@ func poolController(com chan poolRewards) {
 	for {
 		select {
 		case b := <-selfBlockChan:
+			fmt.Println("___________________________")
 			sys.addBlock(b, true)
-			selfishBlocks += 1
 			fmt.Printf("Selfish published depth: %d\n", b.depth)
-			fmt.Println("___________________________")
 			fmt.Println(sys.bc.String())
+			fmt.Println("Referenced uncles:")
+			fmt.Println(sys.bc.StringUncles())
 		case b := <-honestBlockChan:
-			sys.addBlock(b, false)
-			honestBlocks += 1
-			fmt.Printf("Honest publish depth: %d\n", b.depth)
 			fmt.Println("___________________________")
+			sys.addBlock(b, false)
+			fmt.Printf("Honest publish depth: %d\n", b.depth)
 			fmt.Println(sys.bc.String())
+			fmt.Println("Referenced uncles:")
+			fmt.Println(sys.bc.StringUncles())
 		default:
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -67,7 +66,7 @@ func poolController(com chan poolRewards) {
 
 func selfishPool(power int, blockCom chan *block, netCom chan int) {
 	privChain = []*block{}
-	potUncles := []int{} // indexes of potiential uncle blocks from publick chain.
+
 	for {
 		// The selfish pool mines a new block
 		time.Sleep(200 * time.Millisecond)
@@ -83,19 +82,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 				nb.depth = privChain[len(privChain)-1].depth + 1
 
 			}
-			// Check if we have any potentiall uncleblocks
-			if len(sys.bc.uncles) > 0 {
-				uncs := findUncles(&potUncles, nb.depth)
-				// uncs is list of index(in chain) to valid uncles
-				// returns max 2
-				if len(uncs) > 0 {
-					for _, u := range uncs {
-						nb.uncleBlocks = append(nb.uncleBlocks, sys.bc.chain[u])
 
-					}
-				}
-			}
-			nb.calckRewards()
 			privChain = append(privChain, nb)
 			fmt.Println(fmt.Sprintf("Selfish: new secret block added depth: %d", nb.depth))
 		}
@@ -136,25 +123,24 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 }
 
 // Returns index of one or more uncleblocks
-func findUncles(uncs *[]int, depth int) []int {
-	response := []int{}
-	for i := 0; i < len(*uncs); i++ {
-		if depth-(*uncs)[i] <= 6 { // Can't be over 6 blocks old
-			// TODO: Can't remeber if its supposed to ignore, or its just no reward for older than 6
-			response = append(response, (*uncs)[i])
-			// Remove used index from slice
-			*uncs = append((*uncs)[:i], (*uncs)[i+1:]...)
+func findUncles(depth int) []*block {
+	response := []*block{}
+	for i := depth - 6; i < depth; i++ {
+		if block, ok := sys.bc.uncles[i]; ok {
+			updateUncleScore(block, depth)
+			response = append(response, block)
+			sys.bc.referencedUncles = append(sys.bc.referencedUncles, block)
+			delete(sys.bc.uncles, i)
+			if len(response) >= 2 {
+				break
+			}
 		}
-		if len(response) >= 2 {
-			return response
-		}
-
 	}
-
-	if len(response) == 0 && len(*uncs) > 0 {
+	if len(response) == 0 && len(sys.bc.uncles) > 0 {
 		// Since none was used, they are all to old, jsut create new list
-		*uncs = []int{}
+		sys.bc.uncles = make(map[int]*block, 0)
 	}
+
 	return response
 }
 
@@ -182,6 +168,7 @@ func createBlock(power int, selfish bool) *block {
 }
 
 func (s *system) addBlock(b *block, selfish bool) {
+	calculateBlockReward(b)
 	if !s.fork {
 		if b.depth == s.bc.CurrentBlock().depth && !s.fork { // New fork has appeard
 			println("NEW FORK!!!!")
@@ -255,6 +242,8 @@ func (s *system) addBlock(b *block, selfish bool) {
 		}
 		s.fork = false
 		println("Fork solved: case 2")
+		// Have to remove referenced block from sys.bc.uncles[s.forkDepth] and make it available for other
+		// fmt.Println(sys.bc.uncles[s.forkDepth])
 		return
 	}
 
@@ -288,7 +277,6 @@ func honestPool(power int, blockCom chan *block, netCom chan int) {
 		time.Sleep(200 * time.Millisecond)
 		if power >= rand.Intn(100) {
 			nb := createBlock(power, false)
-			nb.calckRewards()
 			blockCom <- nb
 
 		}
@@ -302,6 +290,20 @@ func honestPool(power int, blockCom chan *block, netCom chan int) {
 // TODO: Fully create it later.
 func doWork() bool {
 	return rand.Intn(16) == 15
+}
+
+func updateUncleScore(uncle *block, depth int) {
+	distance := depth - uncle.depth
+	reward := ((8.00 - float64(distance)) / 8.00) * float64(BLOCKREWARD)
+	uncle.updateUncle(reward)
+}
+
+func calculateBlockReward(b *block) {
+	// Check if we have any potentiall uncleblocks
+	if len(sys.bc.uncles) > 0 {
+		b.uncleBlocks = findUncles(b.depth)
+	}
+	b.calcRewards()
 }
 
 func randomString(length int) string {

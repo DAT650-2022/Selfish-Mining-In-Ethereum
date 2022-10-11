@@ -1,7 +1,5 @@
 package main
 
-import "fmt"
-
 type block struct {
 	hash        []byte
 	parent      *block
@@ -34,23 +32,20 @@ func newGenesisBlock() *block {
 	}
 }
 
-func (b *block) calckRewards() {
+func (b *block) calcRewards() {
 	// b.dat.rewardUncle needs to be calculated
 	// later since it can't know ahead of time if its included
 	// as uncle in future blocks
 	b.dat.rewardMined = BLOCKREWARD
 	b.dat.rewardUncle = 0
-	nephRew := 0.0
-	if len(b.uncleBlocks) > 0 {
-		for range b.uncleBlocks {
-			nephRew += 1 / 36 // TODO: 1/36 for each uncle=?
-		}
-	}
-	b.dat.rewardNephew = nephRew
+	nephew := (1.00 / 36.00) * float64(len(b.uncleBlocks)) * float64(BLOCKREWARD)
+	b.dat.rewardNephew = nephew
 	b.calcTotal()
 }
 
 func (b *block) updateUncle(reward float64) {
+	b.dat.rewardMined = 0
+	b.dat.rewardNephew = 0
 	b.dat.rewardUncle = reward
 	b.calcTotal() // Update total
 }
@@ -59,6 +54,6 @@ func (b *block) calcTotal() {
 	b.dat.rewardTot = float64(b.dat.rewardMined) + b.dat.rewardNephew + b.dat.rewardUncle
 }
 
-func (b *block) String() string {
-	return fmt.Sprintf("Hash:\t%s \nPHash:\t%s \nDepth:\t%d \nReward:\t%f \nSelfish:\t%t", string(b.hash), string(b.parentHash), b.depth, b.dat.rewardTot, b.dat.selfish)
-}
+//func (b *block) String() string {
+//return fmt.Sprintf("Hash:\t%s \nPHash:\t%s \nDepth:\t%d \nReward:\t%f \nSelfish:\t%t", string(b.hash), string(b.parentHash), b.depth, b.dat.rewardTot, b.dat.selfish)
+//}
