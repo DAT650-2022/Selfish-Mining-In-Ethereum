@@ -19,9 +19,10 @@ func newSystem() *system {
 	return &system{}
 }
 
+var sys = newSystem()
+
 func poolController(com chan poolRewards) {
-	system := newSystem()
-	system.bc = newBlockChain()
+	sys.bc = newBlockChain()
 
 	selfBlockChan := make(chan *block)
 	honestBlockChan := make(chan *block)
@@ -39,15 +40,15 @@ func poolController(com chan poolRewards) {
 	for {
 		select {
 		case b := <-selfBlockChan:
-			system.addBlock(b, true)
-			honestnetCom <- len(system.bc.chain)
+			sys.addBlock(b, true)
+			honestnetCom <- len(sys.bc.chain)
 			fmt.Println("___________________________")
-			fmt.Println(system.bc.String())
+			fmt.Println(sys.bc.String())
 		case b := <-honestBlockChan:
-			system.addBlock(b, false)
-			selfishnetCom <- len(system.bc.chain)
+			sys.addBlock(b, false)
+			selfishnetCom <- len(sys.bc.chain)
 			fmt.Println("___________________________")
-			fmt.Println(system.bc.String())
+			fmt.Println(sys.bc.String())
 		default:
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -64,7 +65,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 		randroll := rand.Intn(100)
 		if power >= randroll {
 			// We succeded, new block
-			nb := s.createBlock(power, true)
+			nb := createBlock(power, true)
 			// If we already have a private chain -> Parent and depth follow private chain instead of public blockchain
 			if len(privChain) > 0 {
 				nb.parent = privChain[len(privChain)-1]
@@ -74,7 +75,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 			privChain = append(privChain, nb)
 			fmt.Println("Selfish: new secret block added")
 			// When we are ahead by one and our private chain has 2 blocks -> Limited advantage
-			if len(privChain) == 2 && privChain[len(privChain)-1].depth-1 == s.bc.CurrentBlock().depth {
+			if len(privChain) == 2 && privChain[len(privChain)-1].depth-1 == sys.bc.CurrentBlock().depth {
 				fmt.Println("Selfish: Ahead by 1 -> Full release ")
 				for _, block := range privChain {
 					blockCom <- block
@@ -87,24 +88,24 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 			// 1. The miner references all (unreferenced) uncle blocks based on its public branches
 
 			// Honest pool is ahead of us. Scrap private chain and mine on new block.
-			if privChain[len(privChain)-1].depth < s.bc.CurrentBlock().depth {
+			if privChain[len(privChain)-1].depth < sys.bc.CurrentBlock().depth {
 				privChain = []*block{}
 				fmt.Println("Selfish: abandon")
 				// If we are tied with honest pool. Release the last block in the private branch and scrap.
-			} else if privChain[len(privChain)-1].depth == s.bc.CurrentBlock().depth {
+			} else if privChain[len(privChain)-1].depth == sys.bc.CurrentBlock().depth {
 				blockCom <- privChain[len(privChain)-1]
 				privChain = []*block{}
 				fmt.Println("Selfish: Tied release")
 				// If we are ahead by one. Publish private branch.
-			} else if privChain[len(privChain)-1].depth == s.bc.CurrentBlock().depth+1 {
+			} else if privChain[len(privChain)-1].depth == sys.bc.CurrentBlock().depth+1 {
 				for _, block := range privChain {
 					blockCom <- block
 				}
 				privChain = []*block{}
 				fmt.Println("Full release")
 				// If we are ahead by more than 2. Release block until we reach public chain
-			} else if privChain[len(privChain)-1].depth >= s.bc.CurrentBlock().depth+2 {
-				toRelease := privChain[len(privChain)-1].depth - (s.bc.CurrentBlock().depth + 2)
+			} else if privChain[len(privChain)-1].depth >= sys.bc.CurrentBlock().depth+2 {
+				toRelease := privChain[len(privChain)-1].depth - (sys.bc.CurrentBlock().depth + 2)
 				for _, block := range privChain[:toRelease] {
 					blockCom <- block
 				}
@@ -120,6 +121,7 @@ func createBlock(power int, selfish bool) *block {
 	// Creates a dataunit of expected value.
 	// actual final values gets calculated from the final blockchain.
 	var dat dataUnit
+	// TODO: fill rest of dataunit
 	if selfish {
 		dat = dataUnit{selfish: true}
 	} else {
@@ -128,8 +130,8 @@ func createBlock(power int, selfish bool) *block {
 	newBlock := block{
 		hash:       []byte(randomString(10)),
 		dat:        dat,
-		parentHash: s.bc.CurrentBlock().hash,
-		depth:      s.bc.CurrentBlock().depth + 1,
+		parentHash: sys.bc.CurrentBlock().hash,
+		depth:      sys.bc.CurrentBlock().depth + 1,
 	}
 	return &newBlock
 }
