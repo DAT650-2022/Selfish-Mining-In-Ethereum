@@ -15,7 +15,17 @@ type blockchain struct {
 func (bc *blockchain) round() int {
 	return len(bc.chain)
 }
+
 func (bc *blockchain) addNewBlock(b *block) {
+	for _, block := range bc.referencedUncles {
+		if block.uncleBlocks != nil {
+			bc.chain[block.depth].uncleBlocks = block.uncleBlocks
+			bc.chain[block.depth].calcRewards()
+			block.uncleBlocks = nil
+			block.dat.rewardTot = block.dat.rewardTot - block.dat.rewardNephew
+			block.dat.rewardNephew = 0
+		}
+	}
 	bc.chain = append(bc.chain, b)
 }
 
@@ -44,5 +54,6 @@ func (bc *blockchain) StringUncles() string {
 	for _, block := range bc.referencedUncles {
 		lines = append(lines, fmt.Sprintf("%v", block))
 	}
+
 	return strings.Join(lines, "\n")
 }
