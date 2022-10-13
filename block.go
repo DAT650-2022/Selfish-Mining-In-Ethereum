@@ -47,7 +47,7 @@ func (b *block) calcRewards() {
 
 func (b *block) updateUncle(reward float64) {
 	b.dat.rewardMined = 0
-	b.dat.rewardNephew = 0
+	//b.dat.rewardNephew = 0
 	b.dat.rewardUncle = reward
 	b.calcTotal() // Update total
 }
