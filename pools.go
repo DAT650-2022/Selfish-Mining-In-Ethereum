@@ -28,8 +28,11 @@ func newSystem() *system {
 var sys = newSystem()
 var privChain []*block
 
-func poolController(com chan poolRewards) {
+func poolController(com chan *blockchain) {
 	sys.bc = newBlockChain()
+
+	selfishBlockCount := 0
+	honestBlockCount := 0
 
 	selfBlockChan := make(chan *block)
 	honestBlockChan := make(chan *block)
@@ -38,8 +41,8 @@ func poolController(com chan poolRewards) {
 	selfishnetCom := make(chan int, 100)
 	honestnetCom := make(chan int, 100)
 
-	go honestPool(55, honestBlockChan, honestnetCom)
-	go selfishPool(45, selfBlockChan, selfishnetCom)
+	go honestPool(550, honestBlockChan, honestnetCom)
+	go selfishPool(450, selfBlockChan, selfishnetCom)
 
 	// Network power of the selfish pool
 	for {
@@ -47,18 +50,24 @@ func poolController(com chan poolRewards) {
 		case b := <-selfBlockChan:
 			fmt.Println("___________________________")
 			sys.addBlock(b, true)
+			selfishBlockCount++
 			fmt.Printf("Selfish published depth: %d\n", b.depth)
-			fmt.Println(sys.bc.String())
+			// fmt.Println(sys.bc.String())
 			fmt.Println("Referenced uncles:")
-			fmt.Println(sys.bc.StringUncles())
+			// fmt.Println(sys.bc.StringUncles())
 		case b := <-honestBlockChan:
 			fmt.Println("___________________________")
 			sys.addBlock(b, false)
+			honestBlockCount++
 			fmt.Printf("Honest publish depth: %d\n", b.depth)
-			fmt.Println(sys.bc.String())
+			// fmt.Println(sys.bc.String())
 			fmt.Println("Referenced uncles:")
-			fmt.Println(sys.bc.StringUncles())
+			// fmt.Println(sys.bc.StringUncles())
 		default:
+			if len(sys.bc.chain) >= 500 {
+				com <- sys.bc
+				break
+			}
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
@@ -71,7 +80,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 		// The selfish pool mines a new block
 		time.Sleep(200 * time.Millisecond)
 
-		randroll := rand.Intn(100)
+		randroll := rand.Intn(1000)
 		if power >= randroll {
 			// We succeded, new block
 			nb := createBlock(power, true)
@@ -81,6 +90,9 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 				nb.parentHash = privChain[len(privChain)-1].hash
 				nb.depth = privChain[len(privChain)-1].depth + 1
 
+			} else if len(privChain) == 0 && sys.fork && sys.forkSelfish {
+				nb.parent = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1]
+				nb.parentHash = nb.parent.hash
 			}
 
 			privChain = append(privChain, nb)
@@ -88,7 +100,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 		}
 
 		// Some honest miners has mined a block and we have private blocks
-		if len(privChain) > 0 && sys.bc.CurrentBlock().depth >= privChain[0].depth {
+		if checkPublicChain() {
 			// 1. The miner references all (unreferenced) uncle blocks based on its public branches
 
 			// Honest pool is ahead of us. Scrap private chain and mine on new block.
@@ -122,6 +134,17 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 	}
 }
 
+func checkPublicChain() bool {
+	var t bool
+	if sys.fork && !sys.forkSelfish {
+		t = len(privChain) > 0 && sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1].depth >= privChain[0].depth
+
+	} else {
+		t = len(privChain) > 0 && sys.bc.CurrentBlock().depth >= privChain[0].depth
+	}
+	return t
+}
+
 // Returns index of one or more uncleblocks
 func findUncles(depth int) []*block {
 	response := []*block{}
@@ -149,19 +172,23 @@ func createBlock(power int, selfish bool) *block {
 	// actual final values gets calculated from the final blockchain.
 	var dat dataUnit
 	depth := sys.bc.CurrentBlock().depth + 1
+	prntHash := sys.bc.CurrentBlock().hash
+	prnt := sys.bc.CurrentBlock()
 	if selfish {
 		dat = dataUnit{selfish: true}
 	} else {
 		dat = dataUnit{selfish: false}
 		if sys.fork && !sys.forkSelfish {
 			depth = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1].depth + 1
+			prntHash = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1].hash
+			prnt = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1]
 		}
 	}
 	newBlock := block{
 		hash:       []byte(randomString(10)),
-		parent:     sys.bc.CurrentBlock(),
+		parent:     prnt,
 		dat:        dat,
-		parentHash: sys.bc.CurrentBlock().hash,
+		parentHash: prntHash,
 		depth:      depth,
 	}
 	return &newBlock
@@ -169,6 +196,9 @@ func createBlock(power int, selfish bool) *block {
 
 func (s *system) addBlock(b *block, selfish bool) {
 	calculateBlockReward(b)
+	if b.depth >= 500 {
+		println("mark")
+	}
 	if !s.fork {
 		if b.depth == s.bc.CurrentBlock().depth && !s.fork { // New fork has appeard
 			println("NEW FORK!!!!")
@@ -209,11 +239,22 @@ func (s *system) addBlock(b *block, selfish bool) {
 		} else {
 			sys.bc.uncles[s.forkDepth] = sys.bc.chain[s.forkDepth]
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
+			discarded := s.bc.chain[s.forkDepth:]
 			s.bc.chain = s.bc.chain[:s.forkDepth]
 			for _, bl := range s.fo[s.forkDepth] {
 				s.bc.addNewBlock(bl)
 			}
 			delete(s.fo, b.depth)
+			for _, v := range discarded {
+				if len(v.uncleBlocks) > 0 {
+					for _, u := range v.uncleBlocks {
+						if b.depth-u.depth > 6 {
+							continue
+						}
+						sys.bc.uncles[u.depth] = u
+					}
+				}
+			}
 		}
 		s.fork = false
 		println("Fork solved: case 1")
@@ -233,25 +274,34 @@ func (s *system) addBlock(b *block, selfish bool) {
 		} else {
 			sys.bc.uncles[s.forkDepth] = sys.bc.chain[s.forkDepth]
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
+			discarded := s.bc.chain[s.forkDepth:]
 			s.bc.chain = s.bc.chain[:s.forkDepth]
 			for _, bl := range s.fo[s.forkDepth] {
 				s.bc.addNewBlock(bl)
 			}
 			// s.bc.chain = append(s.bc.chain, s.fo[s.forkDepth]...)
 			delete(s.fo, b.depth)
+			for _, v := range discarded {
+				if len(v.uncleBlocks) > 0 {
+					for _, u := range v.uncleBlocks {
+						if b.depth-u.depth > 6 {
+							continue
+						}
+						sys.bc.uncles[u.depth] = u
+					}
+				}
+			}
 		}
 		s.fork = false
 		println("Fork solved: case 2")
 		// Have to remove referenced block from sys.bc.uncles[s.forkDepth] and make it available for other
 		// fmt.Println(sys.bc.uncles[s.forkDepth])
 		return
-	}
-
-	if !b.dat.selfish && b.depth == s.bc.CurrentBlock().depth && s.fork {
+	} else if !b.dat.selfish && b.depth >= s.bc.CurrentBlock().depth && s.fork {
 		if !s.forkSelfish {
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
 		}
-	} else if b.dat.selfish && b.depth == s.bc.CurrentBlock().depth && s.fork {
+	} else if b.dat.selfish && b.depth >= s.bc.CurrentBlock().depth && s.fork {
 		if s.forkSelfish {
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
 		}
@@ -275,7 +325,7 @@ func honestPool(power int, blockCom chan *block, netCom chan int) {
 	// missedBlocks := 0
 	for {
 		time.Sleep(200 * time.Millisecond)
-		if power >= rand.Intn(100) {
+		if power >= rand.Intn(1000) {
 			nb := createBlock(power, false)
 			blockCom <- nb
 

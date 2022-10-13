@@ -1,11 +1,7 @@
 package main
 
-import (
-	"time"
-)
-
 func main() {
-	rewards := make(chan poolRewards)
+	rewards := make(chan *blockchain)
 
 	go poolController(rewards)
 
@@ -18,7 +14,11 @@ func main() {
 	}
 	saveTofile()
 
-	time.Sleep(120 * time.Second)
+	// time.Sleep(20000 * time.Second)
+	chain := <-rewards
+
+	ChainTotxt(chain, "testing")
+
 }
 
 func printData() {

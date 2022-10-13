@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 )
@@ -16,6 +17,9 @@ func (bc *blockchain) round() int {
 	return len(bc.chain)
 }
 func (bc *blockchain) addNewBlock(b *block) {
+	if !bytes.Equal(b.parentHash, bc.CurrentBlock().hash) {
+		panic("ABOUT TO ADD BLOCK WITH WRONG PARENT!")
+	}
 	bc.chain = append(bc.chain, b)
 }
 

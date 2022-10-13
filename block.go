@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 type block struct {
 	hash        []byte
 	parent      *block
@@ -54,6 +56,10 @@ func (b *block) calcTotal() {
 	b.dat.rewardTot = float64(b.dat.rewardMined) + b.dat.rewardNephew + b.dat.rewardUncle
 }
 
-//func (b *block) String() string {
-//return fmt.Sprintf("Hash:\t%s \nPHash:\t%s \nDepth:\t%d \nReward:\t%f \nSelfish:\t%t", string(b.hash), string(b.parentHash), b.depth, b.dat.rewardTot, b.dat.selfish)
-//}
+// func (b *block) String() string {
+// return fmt.Sprintf("Hash:\t%s \nPHash:\t%s \nDepth:\t%d \nReward:\t%f \nSelfish:\t%t", string(b.hash), string(b.parentHash), b.depth, b.dat.rewardTot, b.dat.selfish)
+// }
+
+func (b *block) String() string {
+	return fmt.Sprintf("===\nHash:\t%s \nPHash:\t%s \nDepth:\t%d \nReward:\t%f \nSelfish:\t%t\n%v===", string(b.hash), string(b.parentHash), b.depth, b.dat.rewardTot, b.dat.selfish, b.uncleBlocks)
+}
