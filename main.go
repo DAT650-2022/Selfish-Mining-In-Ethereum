@@ -1,8 +1,14 @@
 package main
 
+import (
+	"log"
+	"time"
+)
+
 func main() {
 	rewards := make(chan *blockchain)
 
+	start := time.Now()
 	go poolController(rewards)
 
 	// main loop
@@ -16,6 +22,8 @@ func main() {
 
 	// time.Sleep(20000 * time.Second)
 	chain := <-rewards
+	runtime := time.Since(start)
+	log.Printf("Binomial took %s", runtime)
 
 	ChainTotxt(chain, "testing")
 	totals := calcChainRewards(chain)

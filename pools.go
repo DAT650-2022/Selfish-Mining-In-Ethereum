@@ -43,8 +43,8 @@ func poolController(com chan *blockchain) {
 	selfishnetCom := make(chan int, 100)
 	honestnetCom := make(chan int, 100)
 
-	go honestPool(550, honestBlockChan, honestnetCom)
-	go selfishPool(450, selfBlockChan, selfishnetCom)
+	go honestPool(800, honestBlockChan, honestnetCom)
+	go selfishPool(200, selfBlockChan, selfishnetCom)
 
 	// Network power of the selfish pool
 	for {
@@ -80,7 +80,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 
 	for {
 		// The selfish pool mines a new block
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(WORKSLEEPTIME * time.Millisecond)
 
 		randroll := rand.Intn(1000)
 		if power >= randroll {
@@ -203,9 +203,6 @@ func createBlock(power int, selfish bool) *block {
 
 func (s *system) addBlock(b *block, selfish bool) {
 	calculateBlockReward(b)
-	if b.depth >= 500 {
-		println("mark")
-	}
 	if !s.fork {
 		if b.depth == s.bc.CurrentBlock().depth && !s.fork { // New fork has appeard
 			println("NEW FORK!!!!")
@@ -219,7 +216,6 @@ func (s *system) addBlock(b *block, selfish bool) {
 			return
 		} else if b.depth < s.bc.CurrentBlock().depth {
 			// find parent
-			println("SOmethgin wong")
 			k := b
 			i := 0
 			for {
@@ -378,7 +374,7 @@ func (s *system) addBlock(b *block, selfish bool) {
 func honestPool(power int, blockCom chan *block, netCom chan int) {
 	// missedBlocks := 0
 	for {
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(WORKSLEEPTIME * time.Millisecond)
 		if power >= rand.Intn(1000) {
 			nb := createBlock(power, false)
 			blockCom <- nb
@@ -397,8 +393,9 @@ func doWork() bool {
 }
 
 func updateUncleScore(uncle *block, depth int) {
-	distance := depth - uncle.depth
-	reward := ((8.00 - float64(distance)) / 8.00) * float64(BLOCKREWARD)
+	// distance := depth - uncle.depth
+	// reward := ((8.00 - float64(distance)) / 8.00) * float64(BLOCKREWARD)
+	reward := 4.0 / 8.0 * float64(BLOCKREWARD)
 	uncle.updateUncle(reward)
 }
 
