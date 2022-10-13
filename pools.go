@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -19,6 +20,7 @@ type system struct {
 	forkSelfish bool
 	forkDepth   int
 	fo          map[int][]*block
+	lo          sync.Mutex
 }
 
 func newSystem() *system {
@@ -64,7 +66,7 @@ func poolController(com chan *blockchain) {
 			fmt.Println("Referenced uncles:")
 			// fmt.Println(sys.bc.StringUncles())
 		default:
-			if len(sys.bc.chain) >= 500 {
+			if len(sys.bc.chain) >= TARGETCHAINLENGTH {
 				com <- sys.bc
 				break
 			}
@@ -91,7 +93,9 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 				nb.depth = privChain[len(privChain)-1].depth + 1
 
 			} else if len(privChain) == 0 && sys.fork && sys.forkSelfish {
+				sys.lo.Lock()
 				nb.parent = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1]
+				sys.lo.Unlock()
 				nb.parentHash = nb.parent.hash
 			}
 
@@ -137,8 +141,9 @@ func selfishPool(power int, blockCom chan *block, netCom chan int) {
 func checkPublicChain() bool {
 	var t bool
 	if sys.fork && !sys.forkSelfish {
+		sys.lo.Lock()
 		t = len(privChain) > 0 && sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1].depth >= privChain[0].depth
-
+		sys.lo.Unlock()
 	} else {
 		t = len(privChain) > 0 && sys.bc.CurrentBlock().depth >= privChain[0].depth
 	}
@@ -179,9 +184,11 @@ func createBlock(power int, selfish bool) *block {
 	} else {
 		dat = dataUnit{selfish: false}
 		if sys.fork && !sys.forkSelfish {
+			sys.lo.Lock()
 			depth = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1].depth + 1
 			prntHash = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1].hash
 			prnt = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1]
+			sys.lo.Unlock()
 		}
 	}
 	newBlock := block{
@@ -205,8 +212,10 @@ func (s *system) addBlock(b *block, selfish bool) {
 			s.fork = true
 			s.forkDepth = b.depth
 			s.forkSelfish = b.dat.selfish
+			sys.lo.Lock()
 			s.fo = make(map[int][]*block)
 			s.fo[b.depth] = []*block{b}
+			sys.lo.Unlock()
 			return
 		} else if b.depth < s.bc.CurrentBlock().depth {
 			// find parent
@@ -235,16 +244,22 @@ func (s *system) addBlock(b *block, selfish bool) {
 	if !b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 && len(privChain) <= 0 { // selfish realesed tie
 		if s.forkSelfish {
 			s.bc.addNewBlock(b)
+			sys.lo.Lock()
 			sys.bc.uncles[s.forkDepth] = s.fo[s.forkDepth][0]
+			sys.lo.Unlock()
 		} else {
+			sys.lo.Lock()
 			sys.bc.uncles[s.forkDepth] = sys.bc.chain[s.forkDepth]
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
 			discarded := s.bc.chain[s.forkDepth:]
 			s.bc.chain = s.bc.chain[:s.forkDepth]
+			s.fo[s.forkDepth][0].parent = sys.bc.CurrentBlock() ///////
+			s.fo[s.forkDepth][0].parentHash = s.fo[s.forkDepth][0].parent.hash
 			for _, bl := range s.fo[s.forkDepth] {
 				s.bc.addNewBlock(bl)
 			}
 			delete(s.fo, b.depth)
+			sys.lo.Unlock()
 			for _, v := range discarded {
 				if len(v.uncleBlocks) > 0 {
 					for _, u := range v.uncleBlocks {
@@ -259,28 +274,36 @@ func (s *system) addBlock(b *block, selfish bool) {
 		s.fork = false
 		println("Fork solved: case 1")
 		return
-	} else if !b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 && len(privChain) > 0 { // selfish realesed tie
+	} else if !b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 && len(privChain) > 1 { // selfish realesed tie
 		if s.forkSelfish {
 			s.bc.addNewBlock(b)
 		} else {
+			sys.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
+			sys.lo.Unlock()
 		}
 		println("Fork: case 1.2")
 		return
 	} else if b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 { // selfish realesed tie
 		if !s.forkSelfish {
 			s.bc.addNewBlock(b)
+			sys.lo.Lock()
 			sys.bc.uncles[s.forkDepth] = s.fo[s.forkDepth][0]
+			sys.lo.Unlock()
 		} else {
 			sys.bc.uncles[s.forkDepth] = sys.bc.chain[s.forkDepth]
+			sys.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
 			discarded := s.bc.chain[s.forkDepth:]
 			s.bc.chain = s.bc.chain[:s.forkDepth]
+			s.fo[s.forkDepth][0].parent = sys.bc.CurrentBlock() ///////
+			s.fo[s.forkDepth][0].parentHash = s.fo[s.forkDepth][0].parent.hash
 			for _, bl := range s.fo[s.forkDepth] {
 				s.bc.addNewBlock(bl)
 			}
 			// s.bc.chain = append(s.bc.chain, s.fo[s.forkDepth]...)
 			delete(s.fo, b.depth)
+			sys.lo.Unlock()
 			for _, v := range discarded {
 				if len(v.uncleBlocks) > 0 {
 					for _, u := range v.uncleBlocks {
@@ -299,22 +322,53 @@ func (s *system) addBlock(b *block, selfish bool) {
 		return
 	} else if !b.dat.selfish && b.depth >= s.bc.CurrentBlock().depth && s.fork {
 		if !s.forkSelfish {
+			sys.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
+			if b.depth > privChain[len(privChain)-1].depth {
+				// private is too too far behind.
+				sys.bc.uncles[s.forkDepth] = sys.bc.chain[s.forkDepth]
+				discarded := s.bc.chain[s.forkDepth:]
+				s.bc.chain = s.bc.chain[:s.forkDepth]
+				s.fo[s.forkDepth][0].parent = sys.bc.CurrentBlock() ///////
+				s.fo[s.forkDepth][0].parentHash = s.fo[s.forkDepth][0].parent.hash
+				for _, bl := range s.fo[s.forkDepth] {
+					s.bc.addNewBlock(bl)
+				}
+				// s.bc.chain = append(s.bc.chain, s.fo[s.forkDepth]...)
+				delete(s.fo, b.depth)
+				for _, v := range discarded {
+					if len(v.uncleBlocks) > 0 {
+						for _, u := range v.uncleBlocks {
+							if b.depth-u.depth > 6 {
+								continue
+							}
+							sys.bc.uncles[u.depth] = u
+						}
+					}
+				}
+			}
+			sys.lo.Unlock()
 		}
 	} else if b.dat.selfish && b.depth >= s.bc.CurrentBlock().depth && s.fork {
 		if s.forkSelfish {
+			sys.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
+			sys.lo.Unlock()
 		}
 	}
 
 	if b.depth < s.bc.CurrentBlock().depth && s.fork {
 		if s.forkSelfish {
 			if b.dat.selfish {
+				sys.lo.Lock()
 				s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
+				sys.lo.Unlock()
 			}
 		} else {
 			if !b.dat.selfish {
+				sys.lo.Lock()
 				s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
+				sys.lo.Unlock()
 			}
 		}
 	}

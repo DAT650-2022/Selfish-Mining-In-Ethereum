@@ -18,7 +18,11 @@ func main() {
 	chain := <-rewards
 
 	ChainTotxt(chain, "testing")
+	totals := calcChainRewards(chain)
 
+	print(totals)
+
+	println("DONE!")
 }
 
 func printData() {
