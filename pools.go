@@ -30,7 +30,7 @@ func newSystem() *system {
 var sys = newSystem()
 var privChain []*block
 
-func poolController(com chan *blockchain) {
+func poolController(com chan *blockchain, alpha int) {
 	sys.bc = newBlockChain()
 
 	selfishBlockCount := 0
@@ -43,8 +43,8 @@ func poolController(com chan *blockchain) {
 	selfishnetCom := make(chan int, 100)
 	honestnetCom := make(chan int, 100)
 
-	go honestPool(550, honestBlockChan, honestnetCom)
-	go selfishPool(450, selfBlockChan, selfishnetCom)
+	go honestPool(1000-alpha, honestBlockChan, honestnetCom)
+	go selfishPool(alpha, selfBlockChan, selfishnetCom)
 
 	// Network power of the selfish pool
 	for {
@@ -386,14 +386,6 @@ func honestPool(power int, blockCom chan *block, netCom chan int) {
 		}
 
 	}
-}
-
-// For early early tests we just run a 1/15 chance
-// for succes, the miners run this work 1 time second.
-// +- some value to adjust for hashing power.
-// TODO: Fully create it later.
-func doWork() bool {
-	return rand.Intn(16) == 15
 }
 
 func updateUncleScore(uncle *block, depth int) {

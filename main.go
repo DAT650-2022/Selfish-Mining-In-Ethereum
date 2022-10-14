@@ -1,9 +1,15 @@
 package main
 
+import (
+	"os"
+	"strconv"
+)
+
 func main() {
+	selfishPower, _ := strconv.Atoi(os.Args[1])
 	rewards := make(chan *blockchain)
 
-	go poolController(rewards)
+	go poolController(rewards, selfishPower)
 
 	// main loop
 	for {
