@@ -23,7 +23,7 @@ func main() {
 	// time.Sleep(20000 * time.Second)
 	chain := <-rewards
 
-	ChainTotxt(chain, "testing")
+	chainRewardToCsv(chain, os.Args[1])
 	totals := calcChainRewards(chain)
 
 	print(totals)

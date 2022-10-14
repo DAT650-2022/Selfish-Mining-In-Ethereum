@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 )
@@ -18,10 +17,12 @@ func (bc *blockchain) round() int {
 }
 
 func (bc *blockchain) addNewBlock(b *block) {
-	if !bytes.Equal(b.parentHash, bc.CurrentBlock().hash) {
-		panic("ABOUT TO ADD BLOCK WITH WRONG PARENT!")
-	}
+	//if !bytes.Equal(b.parentHash, bc.CurrentBlock().hash) {
+	//panic("ABOUT TO ADD BLOCK WITH WRONG PARENT!")
+	//}
+	bc.chain = append(bc.chain, b)
 
+	// Checks if any uncles is referencing other uncles. If they do -> Make block in main chain refer uncle instead
 	for _, block := range bc.referencedUncles {
 		if block.uncleBlocks != nil {
 			bc.chain[block.depth].uncleBlocks = block.uncleBlocks
@@ -31,7 +32,6 @@ func (bc *blockchain) addNewBlock(b *block) {
 			block.dat.rewardNephew = 0
 		}
 	}
-	bc.chain = append(bc.chain, b)
 }
 
 func (bc *blockchain) CurrentBlock() *block {

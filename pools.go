@@ -55,16 +55,16 @@ func poolController(com chan *blockchain, alpha int) {
 			selfishBlockCount++
 			fmt.Printf("Selfish published depth: %d\n", b.depth)
 			// fmt.Println(sys.bc.String())
-			fmt.Println("Referenced uncles:")
-			// fmt.Println(sys.bc.StringUncles())
+			//fmt.Println("Referenced uncles:")
+			//fmt.Println(sys.bc.StringUncles())
 		case b := <-honestBlockChan:
 			fmt.Println("___________________________")
 			sys.addBlock(b, false)
 			honestBlockCount++
 			fmt.Printf("Honest publish depth: %d\n", b.depth)
 			// fmt.Println(sys.bc.String())
-			fmt.Println("Referenced uncles:")
-			// fmt.Println(sys.bc.StringUncles())
+			//fmt.Println("Referenced uncles:")
+			//fmt.Println(sys.bc.StringUncles())
 		default:
 			if len(sys.bc.chain) >= TARGETCHAINLENGTH {
 				com <- sys.bc
@@ -324,8 +324,8 @@ func (s *system) addBlock(b *block, selfish bool) {
 		if !s.forkSelfish {
 			sys.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
-			if b.depth > privChain[len(privChain)-1].depth {
-				// private is too too far behind.
+			if len(privChain) == 0 || b.depth > privChain[len(privChain)-1].depth {
+				// private is too far behind.
 				sys.bc.uncles[s.forkDepth] = sys.bc.chain[s.forkDepth]
 				discarded := s.bc.chain[s.forkDepth:]
 				s.bc.chain = s.bc.chain[:s.forkDepth]
