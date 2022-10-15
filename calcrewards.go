@@ -13,7 +13,7 @@ type chainTots struct {
 
 func calcChainRewards(bc *blockchain) *chainTots {
 	tots := chainTots{}
-	for i := 1; i < len(bc.chain); i++ {
+	for i := 1; i < len(bc.chain); i++ { //  starting at one to ignore genesis block
 		block := bc.chain[i]
 		uncleReward(block, &tots)
 		if block.dat.selfish {

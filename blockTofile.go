@@ -40,11 +40,11 @@ func chainRewardToCsv(bc *blockchain, name string) {
 
 	rew := calcChainRewards(bc)
 
-	w.WriteString("Chain;Total;TotalSelfish;TotalHonest;UncleSelfish;UncleHonest;NephewSelfish;NephewHonest;MinedSelf;MinedHonest;absSelfRev;absHonestRev\n")
+	w.WriteString("Chain-number-run;Blocks;Total;TotalSelfish;TotalHonest;UncleSelfish;UncleHonest;NephewSelfish;NephewHonest;MinedSelf;MinedHonest;absSelfRev;absHonestRev\n")
 	w.WriteString(
 		fmt.Sprintf(
-			"%s;%d;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f\n",
-			bc.name,
+			"%s;%d;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f\n",
+			bc.name, len(bc.chain),
 			rew.total, rew.totalSelf, rew.totlaHonest,
 			rew.uncleSelf, rew.uncleHonest,
 			rew.nephewSelf, rew.nephewHonest,

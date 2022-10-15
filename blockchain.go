@@ -13,14 +13,13 @@ type blockchain struct {
 	name             string
 }
 
-// Helpfull when in knowing if a block is dated.
-func (bc *blockchain) round() int {
-	return len(bc.chain)
-}
-
 func (bc *blockchain) addNewBlock(b *block) {
 	if !bytes.Equal(b.parentHash, bc.CurrentBlock().hash) {
 		fmt.Println("ABOUT TO ADD BLOCK WITH WRONG PARENT!")
+	}
+
+	if len(bc.chain)-1%100 == 0 { // offset the genesis block from count
+		println(fmt.Sprintf("adding block: %d, for chain %s", len(bc.chain), bc.name))
 	}
 
 	for _, block := range bc.referencedUncles {

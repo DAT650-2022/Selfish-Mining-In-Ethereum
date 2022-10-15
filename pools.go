@@ -21,52 +21,57 @@ type system struct {
 	forkDepth   int
 	fo          map[int][]*block
 	lo          sync.Mutex
+	dynamic     bool
 }
 
 func newSystem() *system {
 	return &system{}
 }
 
-var sys = newSystem()
-var privChain []*block
+func poolController(honestPow, selfPow, blocks int, dyn bool, com chan *blockchain, name string) {
+	var sys = newSystem()
+	sys.privChain = []*block{}
 
-func poolController(com chan *blockchain) {
 	sys.bc = newBlockChain()
+	sys.bc.name = name
+	sys.dynamic = dyn
 
 	selfishBlockCount := 0
 	honestBlockCount := 0
 
 	selfBlockChan := make(chan *block)
 	honestBlockChan := make(chan *block)
+	quit := make(chan int, 2)
 	// Used to simulate network to be able to inform
 	// "network" of a new block being published.
 	selfishnetCom := make(chan int, 100)
 	honestnetCom := make(chan int, 100)
 
-	go honestPool(800, honestBlockChan, honestnetCom)
-	go selfishPool(200, selfBlockChan, selfishnetCom)
+	go honestPool(honestPow, honestBlockChan, honestnetCom, quit, sys)
+	go selfishPool(selfPow, selfBlockChan, selfishnetCom, quit, sys)
 
 	// Network power of the selfish pool
 	for {
 		select {
 		case b := <-selfBlockChan:
-			fmt.Println("___________________________")
+			// fmt.Println("___________________________")
 			sys.addBlock(b, true)
 			selfishBlockCount++
-			fmt.Printf("Selfish published depth: %d\n", b.depth)
+			// fmt.Printf("Selfish published depth: %d\n", b.depth)
 			// fmt.Println(sys.bc.String())
-			fmt.Println("Referenced uncles:")
+			// fmt.Println("Referenced uncles:")
 			// fmt.Println(sys.bc.StringUncles())
 		case b := <-honestBlockChan:
-			fmt.Println("___________________________")
+			// fmt.Println("___________________________")
 			sys.addBlock(b, false)
 			honestBlockCount++
-			fmt.Printf("Honest publish depth: %d\n", b.depth)
+			// fmt.Printf("Honest publish depth: %d\n", b.depth)
 			// fmt.Println(sys.bc.String())
-			fmt.Println("Referenced uncles:")
+			// fmt.Println("Referenced uncles:")
 			// fmt.Println(sys.bc.StringUncles())
 		default:
-			if len(sys.bc.chain) >= TARGETCHAINLENGTH {
+			if len(sys.bc.chain) >= blocks+1 { // +1 for genesis block offset.
+				quit <- 1
 				com <- sys.bc
 				break
 			}
@@ -75,87 +80,88 @@ func poolController(com chan *blockchain) {
 	}
 }
 
-func selfishPool(power int, blockCom chan *block, netCom chan int) {
-	privChain = []*block{}
-
+func selfishPool(power int, blockCom chan *block, netCom chan int, quit chan int, sys *system) {
 	for {
 		// The selfish pool mines a new block
+		if len(quit) >= 1 {
+			return
+		}
 		time.Sleep(WORKSLEEPTIME * time.Millisecond)
 
 		randroll := rand.Intn(1000)
 		if power >= randroll {
 			// We succeded, new block
-			nb := createBlock(power, true)
+			nb := createBlock(power, true, sys)
 			// If we already have a private chain -> Parent and depth follow private chain instead of public blockchain
-			if len(privChain) > 0 {
-				nb.parent = privChain[len(privChain)-1]
-				nb.parentHash = privChain[len(privChain)-1].hash
-				nb.depth = privChain[len(privChain)-1].depth + 1
+			if len(sys.privChain) > 0 {
+				nb.parent = sys.privChain[len(sys.privChain)-1]
+				nb.parentHash = sys.privChain[len(sys.privChain)-1].hash
+				nb.depth = sys.privChain[len(sys.privChain)-1].depth + 1
 
-			} else if len(privChain) == 0 && sys.fork && sys.forkSelfish {
+			} else if len(sys.privChain) == 0 && sys.fork && sys.forkSelfish {
 				sys.lo.Lock()
 				nb.parent = sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1]
 				sys.lo.Unlock()
 				nb.parentHash = nb.parent.hash
 			}
 
-			privChain = append(privChain, nb)
+			sys.privChain = append(sys.privChain, nb)
 			fmt.Println(fmt.Sprintf("Selfish: new secret block added depth: %d", nb.depth))
 		}
 
 		// Some honest miners has mined a block and we have private blocks
-		if checkPublicChain() {
+		if checkPublicChain(sys) {
 			// 1. The miner references all (unreferenced) uncle blocks based on its public branches
 
 			// Honest pool is ahead of us. Scrap private chain and mine on new block.
-			if privChain[len(privChain)-1].depth < sys.bc.CurrentBlock().depth {
-				privChain = []*block{}
+			if sys.privChain[len(sys.privChain)-1].depth < sys.bc.CurrentBlock().depth {
+				sys.privChain = []*block{}
 				fmt.Println("Selfish: abandon")
 				// If we are tied with honest pool. Release the last block in the private branch and scrap.
-			} else if privChain[len(privChain)-1].depth == sys.bc.CurrentBlock().depth {
-				blockCom <- privChain[len(privChain)-1]
-				privChain = []*block{}
+			} else if sys.privChain[len(sys.privChain)-1].depth == sys.bc.CurrentBlock().depth {
+				blockCom <- sys.privChain[len(sys.privChain)-1]
+				sys.privChain = []*block{}
 				fmt.Println("Selfish: Tied release")
 				// If we are ahead by only one. Publish private branch.
-			} else if privChain[len(privChain)-1].depth == sys.bc.CurrentBlock().depth+1 {
-				for _, block := range privChain {
+			} else if sys.privChain[len(sys.privChain)-1].depth == sys.bc.CurrentBlock().depth+1 {
+				for _, block := range sys.privChain {
 					blockCom <- block
 				}
-				privChain = []*block{}
+				sys.privChain = []*block{}
 				fmt.Println("Full release")
 				// If we are ahead by more than 2. Release block until we reach public chain
-			} else if privChain[len(privChain)-1].depth >= sys.bc.CurrentBlock().depth+2 {
-				//toRelease := privChain[len(privChain)-1].depth - (sys.bc.CurrentBlock().depth + 2)
-				toRelease := sys.bc.CurrentBlock().depth - privChain[0].depth + 1 // same depth = 0, release one?, one ahead = 1 relase 2?
+			} else if sys.privChain[len(sys.privChain)-1].depth >= sys.bc.CurrentBlock().depth+2 {
+				//toRelease := sys.privChain[len(sys.privChain)-1].depth - (sys.bc.CurrentBlock().depth + 2)
+				toRelease := sys.bc.CurrentBlock().depth - sys.privChain[0].depth + 1 // same depth = 0, release one?, one ahead = 1 relase 2?
 				for i := 0; i < toRelease; i++ {
-					blockCom <- privChain[i]
+					blockCom <- sys.privChain[i]
 				}
 
-				privChain = privChain[toRelease:]
+				sys.privChain = sys.privChain[toRelease:]
 				fmt.Println("Selfish: Ahead by 2 or more")
 			}
 		}
 	}
 }
 
-func checkPublicChain() bool {
+func checkPublicChain(sys *system) bool {
 	var t bool
 	if sys.fork && !sys.forkSelfish {
 		sys.lo.Lock()
-		t = len(privChain) > 0 && sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1].depth >= privChain[0].depth
+		t = len(sys.privChain) > 0 && sys.fo[sys.forkDepth][len(sys.fo[sys.forkDepth])-1].depth >= sys.privChain[0].depth
 		sys.lo.Unlock()
 	} else {
-		t = len(privChain) > 0 && sys.bc.CurrentBlock().depth >= privChain[0].depth
+		t = len(sys.privChain) > 0 && sys.bc.CurrentBlock().depth >= sys.privChain[0].depth
 	}
 	return t
 }
 
 // Returns index of one or more uncleblocks
-func findUncles(depth int) []*block {
+func findUncles(depth int, sys *system) []*block {
 	response := []*block{}
 	for i := depth - 6; i < depth; i++ {
 		if block, ok := sys.bc.uncles[i]; ok {
-			updateUncleScore(block, depth)
+			updateUncleScore(block, depth, sys)
 			response = append(response, block)
 			sys.bc.referencedUncles = append(sys.bc.referencedUncles, block)
 			delete(sys.bc.uncles, i)
@@ -172,7 +178,7 @@ func findUncles(depth int) []*block {
 	return response
 }
 
-func createBlock(power int, selfish bool) *block {
+func createBlock(power int, selfish bool, sys *system) *block {
 	// Creates a dataunit of expected value.
 	// actual final values gets calculated from the final blockchain.
 	var dat dataUnit
@@ -202,26 +208,26 @@ func createBlock(power int, selfish bool) *block {
 }
 
 func (s *system) addBlock(b *block, selfish bool) {
-	calculateBlockReward(b)
+	calculateBlockReward(b, s)
 	if !s.fork {
 		if b.depth == s.bc.CurrentBlock().depth && !s.fork { // New fork has appeard
 			println("NEW FORK!!!!")
 			s.fork = true
 			s.forkDepth = b.depth
 			s.forkSelfish = b.dat.selfish
-			sys.lo.Lock()
+			s.lo.Lock()
 			s.fo = make(map[int][]*block)
 			s.fo[b.depth] = []*block{b}
-			sys.lo.Unlock()
+			s.lo.Unlock()
 			return
 		} else if b.depth < s.bc.CurrentBlock().depth {
 			// find parent
 			k := b
 			i := 0
 			for {
-				if bytes.Equal(k.parentHash, sys.bc.chain[k.parent.depth].hash) { // Parent is in main chain
-					if _, ok := sys.bc.uncles[k.depth]; !ok {
-						sys.bc.uncles[k.depth] = k
+				if bytes.Equal(k.parentHash, s.bc.chain[k.parent.depth].hash) { // Parent is in main chain
+					if _, ok := s.bc.uncles[k.depth]; !ok {
+						s.bc.uncles[k.depth] = k
 						break
 					}
 				}
@@ -237,32 +243,32 @@ func (s *system) addBlock(b *block, selfish bool) {
 		s.bc.addNewBlock(b)
 	}
 
-	if !b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 && len(privChain) <= 0 { // selfish realesed tie
+	if !b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 && len(s.privChain) <= 0 { // selfish realesed tie
 		if s.forkSelfish {
 			s.bc.addNewBlock(b)
-			sys.lo.Lock()
-			sys.bc.uncles[s.forkDepth] = s.fo[s.forkDepth][0]
-			sys.lo.Unlock()
+			s.lo.Lock()
+			s.bc.uncles[s.forkDepth] = s.fo[s.forkDepth][0]
+			s.lo.Unlock()
 		} else {
-			sys.lo.Lock()
-			sys.bc.uncles[s.forkDepth] = sys.bc.chain[s.forkDepth]
+			s.lo.Lock()
+			s.bc.uncles[s.forkDepth] = s.bc.chain[s.forkDepth]
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
 			discarded := s.bc.chain[s.forkDepth:]
 			s.bc.chain = s.bc.chain[:s.forkDepth]
-			s.fo[s.forkDepth][0].parent = sys.bc.CurrentBlock() ///////
+			s.fo[s.forkDepth][0].parent = s.bc.CurrentBlock() ///////
 			s.fo[s.forkDepth][0].parentHash = s.fo[s.forkDepth][0].parent.hash
 			for _, bl := range s.fo[s.forkDepth] {
 				s.bc.addNewBlock(bl)
 			}
 			delete(s.fo, b.depth)
-			sys.lo.Unlock()
+			s.lo.Unlock()
 			for _, v := range discarded {
 				if len(v.uncleBlocks) > 0 {
 					for _, u := range v.uncleBlocks {
 						if b.depth-u.depth > 6 {
 							continue
 						}
-						sys.bc.uncles[u.depth] = u
+						s.bc.uncles[u.depth] = u
 					}
 				}
 			}
@@ -270,43 +276,43 @@ func (s *system) addBlock(b *block, selfish bool) {
 		s.fork = false
 		println("Fork solved: case 1")
 		return
-	} else if !b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 && len(privChain) > 1 { // selfish realesed tie
+	} else if !b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 && len(s.privChain) > 1 { // selfish realesed tie
 		if s.forkSelfish {
 			s.bc.addNewBlock(b)
 		} else {
-			sys.lo.Lock()
+			s.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
-			sys.lo.Unlock()
+			s.lo.Unlock()
 		}
 		println("Fork: case 1.2")
 		return
 	} else if b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 { // selfish realesed tie
 		if !s.forkSelfish {
 			s.bc.addNewBlock(b)
-			sys.lo.Lock()
-			sys.bc.uncles[s.forkDepth] = s.fo[s.forkDepth][0]
-			sys.lo.Unlock()
+			s.lo.Lock()
+			s.bc.uncles[s.forkDepth] = s.fo[s.forkDepth][0]
+			s.lo.Unlock()
 		} else {
-			sys.bc.uncles[s.forkDepth] = sys.bc.chain[s.forkDepth]
-			sys.lo.Lock()
+			s.bc.uncles[s.forkDepth] = s.bc.chain[s.forkDepth]
+			s.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
 			discarded := s.bc.chain[s.forkDepth:]
 			s.bc.chain = s.bc.chain[:s.forkDepth]
-			s.fo[s.forkDepth][0].parent = sys.bc.CurrentBlock() ///////
+			s.fo[s.forkDepth][0].parent = s.bc.CurrentBlock() ///////
 			s.fo[s.forkDepth][0].parentHash = s.fo[s.forkDepth][0].parent.hash
 			for _, bl := range s.fo[s.forkDepth] {
 				s.bc.addNewBlock(bl)
 			}
 			// s.bc.chain = append(s.bc.chain, s.fo[s.forkDepth]...)
 			delete(s.fo, b.depth)
-			sys.lo.Unlock()
+			s.lo.Unlock()
 			for _, v := range discarded {
 				if len(v.uncleBlocks) > 0 {
 					for _, u := range v.uncleBlocks {
 						if b.depth-u.depth > 6 {
 							continue
 						}
-						sys.bc.uncles[u.depth] = u
+						s.bc.uncles[u.depth] = u
 					}
 				}
 			}
@@ -318,14 +324,14 @@ func (s *system) addBlock(b *block, selfish bool) {
 		return
 	} else if !b.dat.selfish && b.depth >= s.bc.CurrentBlock().depth && s.fork {
 		if !s.forkSelfish {
-			sys.lo.Lock()
+			s.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
-			if b.depth > privChain[len(privChain)-1].depth {
+			if b.depth > s.privChain[len(s.privChain)-1].depth {
 				// private is too too far behind.
-				sys.bc.uncles[s.forkDepth] = sys.bc.chain[s.forkDepth]
+				s.bc.uncles[s.forkDepth] = s.bc.chain[s.forkDepth]
 				discarded := s.bc.chain[s.forkDepth:]
 				s.bc.chain = s.bc.chain[:s.forkDepth]
-				s.fo[s.forkDepth][0].parent = sys.bc.CurrentBlock() ///////
+				s.fo[s.forkDepth][0].parent = s.bc.CurrentBlock() ///////
 				s.fo[s.forkDepth][0].parentHash = s.fo[s.forkDepth][0].parent.hash
 				for _, bl := range s.fo[s.forkDepth] {
 					s.bc.addNewBlock(bl)
@@ -338,45 +344,48 @@ func (s *system) addBlock(b *block, selfish bool) {
 							if b.depth-u.depth > 6 {
 								continue
 							}
-							sys.bc.uncles[u.depth] = u
+							s.bc.uncles[u.depth] = u
 						}
 					}
 				}
 			}
-			sys.lo.Unlock()
+			s.lo.Unlock()
 		}
 	} else if b.dat.selfish && b.depth >= s.bc.CurrentBlock().depth && s.fork {
 		if s.forkSelfish {
-			sys.lo.Lock()
+			s.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
-			sys.lo.Unlock()
+			s.lo.Unlock()
 		}
 	}
 
 	if b.depth < s.bc.CurrentBlock().depth && s.fork {
 		if s.forkSelfish {
 			if b.dat.selfish {
-				sys.lo.Lock()
+				s.lo.Lock()
 				s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
-				sys.lo.Unlock()
+				s.lo.Unlock()
 			}
 		} else {
 			if !b.dat.selfish {
-				sys.lo.Lock()
+				s.lo.Lock()
 				s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
-				sys.lo.Unlock()
+				s.lo.Unlock()
 			}
 		}
 	}
 
 }
 
-func honestPool(power int, blockCom chan *block, netCom chan int) {
+func honestPool(power int, blockCom chan *block, netCom chan int, quit chan int, sys *system) {
 	// missedBlocks := 0
 	for {
+		if len(quit) >= 1 {
+			return
+		}
 		time.Sleep(WORKSLEEPTIME * time.Millisecond)
 		if power >= rand.Intn(1000) {
-			nb := createBlock(power, false)
+			nb := createBlock(power, false, sys)
 			blockCom <- nb
 
 		}
@@ -392,17 +401,22 @@ func doWork() bool {
 	return rand.Intn(16) == 15
 }
 
-func updateUncleScore(uncle *block, depth int) {
-	// distance := depth - uncle.depth
-	// reward := ((8.00 - float64(distance)) / 8.00) * float64(BLOCKREWARD)
-	reward := 4.0 / 8.0 * float64(BLOCKREWARD)
+func updateUncleScore(uncle *block, depth int, sys *system) {
+	var distance int
+	var reward float64
+	if sys.dynamic {
+		distance = depth - uncle.depth
+		reward = ((8.00 - float64(distance)) / 8.00) * float64(BLOCKREWARD)
+	} else {
+		reward = 4.0 / 8.0 * float64(BLOCKREWARD)
+	}
 	uncle.updateUncle(reward)
 }
 
-func calculateBlockReward(b *block) {
+func calculateBlockReward(b *block, sys *system) {
 	// Check if we have any potentiall uncleblocks
 	if len(sys.bc.uncles) > 0 {
-		b.uncleBlocks = findUncles(b.depth)
+		b.uncleBlocks = findUncles(b.depth, sys)
 	}
 	b.calcRewards()
 }
