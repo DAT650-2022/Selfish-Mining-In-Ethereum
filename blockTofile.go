@@ -28,3 +28,29 @@ func ChainTotxt(bc *blockchain, name string) {
 
 	w.Flush()
 }
+
+func chainRewardToCsv(bc *blockchain, name string) {
+	path, _ := filepath.Abs(fmt.Sprintf("./data/%s.csv", name))
+	file, err := os.Create(path)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	w := bufio.NewWriter(file)
+
+	rew := calcChainRewards(bc)
+
+	w.WriteString("Chain;Total;TotalSelfish;TotalHonest;UncleSelfish;UncleHonest;NephewSelfish;NephewHonest;MinedSelf;MinedHonest;absSelfRev;absHonestRev\n")
+	w.WriteString(
+		fmt.Sprintf(
+			"%s;%d;%f;%f;%f;%f;%f;%f;%f;%f;%f;%f\n",
+			bc.name,
+			rew.total, rew.totalSelf, rew.totlaHonest,
+			rew.uncleSelf, rew.uncleHonest,
+			rew.nephewSelf, rew.nephewHonest,
+			rew.minedSelf, rew.minedHonest,
+			rew.absSelfRev, rew.absHonestRev,
+		))
+
+	w.Flush()
+}

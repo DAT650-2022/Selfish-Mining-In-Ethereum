@@ -10,6 +10,7 @@ type blockchain struct {
 	chain            []*block
 	uncles           map[int]*block // Contains all current unreferenced uncles within reward range.
 	referencedUncles []*block       // Contains uncles that has been referenced and has cashed in their reward
+	name             string
 }
 
 // Helpfull when in knowing if a block is dated.
@@ -19,7 +20,7 @@ func (bc *blockchain) round() int {
 
 func (bc *blockchain) addNewBlock(b *block) {
 	if !bytes.Equal(b.parentHash, bc.CurrentBlock().hash) {
-		panic("ABOUT TO ADD BLOCK WITH WRONG PARENT!")
+		fmt.Println("ABOUT TO ADD BLOCK WITH WRONG PARENT!")
 	}
 
 	for _, block := range bc.referencedUncles {
