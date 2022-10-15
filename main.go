@@ -9,8 +9,10 @@ import (
 func main() {
 	const RUNS = 5
 	const BLOCKS = 1000
+	saveEachChainInSeperateFiles := true
 
 	start := time.Now()
+	allChains := []*blockchain{}
 	for r := 1; r < RUNS; r++ {
 		chains := []*blockchain{}
 		comChans := make([]chan *blockchain, 0)
@@ -26,16 +28,24 @@ func main() {
 			}
 		}
 		for i := 0; i < len(comChans); i++ {
-			chains = append(chains, <-comChans[i])
+			ch := <-comChans[i]
+			if saveEachChainInSeperateFiles {
+				chains = append(chains, ch)
+
+			}
+			allChains = append(allChains, ch)
 		}
-		for _, C := range chains {
-			chainRewardToCsv(C, C.name)
+		if saveEachChainInSeperateFiles {
+			for _, C := range chains {
+				chainRewardToCsv(C, C.name)
+			}
 		}
 	}
 
 	runtime := time.Since(start)
 	log.Printf("Total runtime took %s", runtime)
 
+	AllchainsRewardToOneCsv(allChains, "AllChainsInOne")
 	println("DONE!")
 	var inp string
 	fmt.Scanln(&inp)

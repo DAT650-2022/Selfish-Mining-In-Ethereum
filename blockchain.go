@@ -18,12 +18,12 @@ func (bc *blockchain) addNewBlock(b *block) {
 		fmt.Println("ABOUT TO ADD BLOCK WITH WRONG PARENT!")
 	}
 
-	if len(bc.chain)-1%100 == 0 { // offset the genesis block from count
+	if (len(bc.chain)-1)%100 == 0 { // offset the genesis block from count
 		println(fmt.Sprintf("adding block: %d, for chain %s", len(bc.chain), bc.name))
 	}
 
 	for _, block := range bc.referencedUncles {
-		if block.uncleBlocks != nil {
+		if block.uncleBlocks != nil && block.depth <= len(bc.chain)-1 {
 			bc.chain[block.depth].uncleBlocks = block.uncleBlocks
 			bc.chain[block.depth].calcRewards()
 			block.uncleBlocks = nil

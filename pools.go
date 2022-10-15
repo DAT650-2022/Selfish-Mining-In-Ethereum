@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -106,7 +105,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int, quit chan int
 			}
 
 			sys.privChain = append(sys.privChain, nb)
-			fmt.Println(fmt.Sprintf("Selfish: new secret block added depth: %d", nb.depth))
+			// fmt.Println(fmt.Sprintf("Selfish: new secret block added depth: %d", nb.depth))
 		}
 
 		// Some honest miners has mined a block and we have private blocks
@@ -116,19 +115,19 @@ func selfishPool(power int, blockCom chan *block, netCom chan int, quit chan int
 			// Honest pool is ahead of us. Scrap private chain and mine on new block.
 			if sys.privChain[len(sys.privChain)-1].depth < sys.bc.CurrentBlock().depth {
 				sys.privChain = []*block{}
-				fmt.Println("Selfish: abandon")
+				// fmt.Println("Selfish: abandon")
 				// If we are tied with honest pool. Release the last block in the private branch and scrap.
 			} else if sys.privChain[len(sys.privChain)-1].depth == sys.bc.CurrentBlock().depth {
 				blockCom <- sys.privChain[len(sys.privChain)-1]
 				sys.privChain = []*block{}
-				fmt.Println("Selfish: Tied release")
+				// fmt.Println("Selfish: Tied release")
 				// If we are ahead by only one. Publish private branch.
 			} else if sys.privChain[len(sys.privChain)-1].depth == sys.bc.CurrentBlock().depth+1 {
 				for _, block := range sys.privChain {
 					blockCom <- block
 				}
 				sys.privChain = []*block{}
-				fmt.Println("Full release")
+				// fmt.Println("Full release")
 				// If we are ahead by more than 2. Release block until we reach public chain
 			} else if sys.privChain[len(sys.privChain)-1].depth >= sys.bc.CurrentBlock().depth+2 {
 				//toRelease := sys.privChain[len(sys.privChain)-1].depth - (sys.bc.CurrentBlock().depth + 2)
@@ -138,7 +137,7 @@ func selfishPool(power int, blockCom chan *block, netCom chan int, quit chan int
 				}
 
 				sys.privChain = sys.privChain[toRelease:]
-				fmt.Println("Selfish: Ahead by 2 or more")
+				// fmt.Println("Selfish: Ahead by 2 or more")
 			}
 		}
 	}
@@ -211,7 +210,7 @@ func (s *system) addBlock(b *block, selfish bool) {
 	calculateBlockReward(b, s)
 	if !s.fork {
 		if b.depth == s.bc.CurrentBlock().depth && !s.fork { // New fork has appeard
-			println("NEW FORK!!!!")
+			// println("NEW FORK!!!!")
 			s.fork = true
 			s.forkDepth = b.depth
 			s.forkSelfish = b.dat.selfish
@@ -274,7 +273,7 @@ func (s *system) addBlock(b *block, selfish bool) {
 			}
 		}
 		s.fork = false
-		println("Fork solved: case 1")
+		// println("Fork solved: case 1")
 		return
 	} else if !b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 && len(s.privChain) > 1 { // selfish realesed tie
 		if s.forkSelfish {
@@ -284,7 +283,7 @@ func (s *system) addBlock(b *block, selfish bool) {
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
 			s.lo.Unlock()
 		}
-		println("Fork: case 1.2")
+		// println("Fork: case 1.2")
 		return
 	} else if b.dat.selfish && s.fork && b.depth == s.bc.CurrentBlock().depth+1 { // selfish realesed tie
 		if !s.forkSelfish {
@@ -318,7 +317,7 @@ func (s *system) addBlock(b *block, selfish bool) {
 			}
 		}
 		s.fork = false
-		println("Fork solved: case 2")
+		// println("Fork solved: case 2")
 		// Have to remove referenced block from sys.bc.uncles[s.forkDepth] and make it available for other
 		// fmt.Println(sys.bc.uncles[s.forkDepth])
 		return
@@ -326,7 +325,7 @@ func (s *system) addBlock(b *block, selfish bool) {
 		if !s.forkSelfish {
 			s.lo.Lock()
 			s.fo[s.forkDepth] = append(s.fo[s.forkDepth], b)
-			if b.depth > s.privChain[len(s.privChain)-1].depth {
+			if len(s.privChain) > 0 && b.depth > s.privChain[len(s.privChain)-1].depth {
 				// private is too too far behind.
 				s.bc.uncles[s.forkDepth] = s.bc.chain[s.forkDepth]
 				discarded := s.bc.chain[s.forkDepth:]
