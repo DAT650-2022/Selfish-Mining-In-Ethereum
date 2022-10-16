@@ -7,13 +7,13 @@ import (
 )
 
 func main() {
-	const RUNS = 5
-	const BLOCKS = 1000
+	const RUNS = 1
+	const BLOCKS = 100000
 	saveEachChainInSeperateFiles := true
 
 	start := time.Now()
 	allChains := []*blockchain{}
-	for r := 1; r < RUNS; r++ {
+	for r := 1; r <= RUNS; r++ {
 		chains := []*blockchain{}
 		comChans := make([]chan *blockchain, 0)
 		for i := 1; i < 10; i += 1 {

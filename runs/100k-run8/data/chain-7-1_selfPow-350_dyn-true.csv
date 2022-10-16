@@ -1,0 +1,2 @@
+Chain-number-run;Blocks;Total;TotalSelfish;TotalHonest;UncleSelfish;UncleHonest;NephewSelfish;NephewHonest;MinedSelf;MinedHonest;absSelfRev;absHonestRev
+chain-7-1_selfPow-350_dyn-true;100001;238486.638889;93070.333333;145416.305556;20226.500000;16778.750000;257.833333;1225.555556;72586.000000;127412.000000;0.465356;0.727089
