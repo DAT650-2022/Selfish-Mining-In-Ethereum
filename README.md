@@ -1,1 +1,1 @@
-# Project simulation source
+# Selfish mining in Ethereum
